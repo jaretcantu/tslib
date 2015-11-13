@@ -97,16 +97,19 @@ static int check_fd(struct tslib_input *i)
 	}
 
 	if ((ioctl(ts->fd, EVIOCGBIT(EV_ABS, sizeof(absbit)), absbit)) < 0) {
-		if ((absbit[BIT_WORD(ABS_X)] & BIT_MASK(ABS_X)) &&
-		    (absbit[BIT_WORD(ABS_Y)] & BIT_MASK(ABS_Y))) {
-			i->using_mt = 0;
-		} else if ((absbit[BIT_WORD(ABS_MT_POSITION_X)] & BIT_MASK(ABS_MT_POSITION_X)) &&
-			   (absbit[BIT_WORD(ABS_MT_POSITION_Y)] & BIT_MASK(ABS_MT_POSITION_Y))) {
-			i->using_mt = 1;
-		} else {
-			fprintf(stderr, "tslib: Selected device is not a touchscreen (must support ABS_X and ABS_Y or ABS_MT_POSITION_X and ABS_MT_POSITION_Y events)\n");
-			return -1;
-		}
+		fprintf(stderr, "tslib: Could not read EV_ABS capabilities from selected device\n");
+		return -1;
+	}
+
+	if ((absbit[BIT_WORD(ABS_X)] & BIT_MASK(ABS_X)) &&
+	    (absbit[BIT_WORD(ABS_Y)] & BIT_MASK(ABS_Y))) {
+		i->using_mt = 0;
+	} else if ((absbit[BIT_WORD(ABS_MT_POSITION_X)] & BIT_MASK(ABS_MT_POSITION_X)) &&
+		   (absbit[BIT_WORD(ABS_MT_POSITION_Y)] & BIT_MASK(ABS_MT_POSITION_Y))) {
+		i->using_mt = 1;
+	} else {
+		fprintf(stderr, "tslib: Selected device is not a touchscreen (must support ABS_X and ABS_Y or ABS_MT_POSITION_X and ABS_MT_POSITION_Y events)\n");
+		return -1;
 	}
 
 	/* Since some touchscreens (eg. infrared) physically can't measure pressure,
