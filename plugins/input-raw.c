@@ -96,8 +96,10 @@ static int check_fd(struct tslib_input *i)
 	}
 
 	if ((ioctl(ts->fd, EVIOCGBIT(EV_ABS, sizeof(absbit)), absbit)) < 0 ||
-		!(absbit[BIT_WORD(ABS_X)] & BIT_MASK(ABS_X)) ||
-		!(absbit[BIT_WORD(ABS_Y)] & BIT_MASK(ABS_Y))) {
+		!((absbit[BIT_WORD(ABS_X)] & BIT_MASK(ABS_X)) ||
+		  (absbit[BIT_WORD(ABS_MT_POSITION_X)] & BIT_MASK(ABS_MT_POSITION_X))) ||
+		!((absbit[BIT_WORD(ABS_Y)] & BIT_MASK(ABS_Y)) ||
+		  (absbit[BIT_WORD(ABS_MT_POSITION_Y)] & BIT_MASK(ABS_MT_POSITION_Y)))) {
 		fprintf(stderr, "tslib: Selected device is not a touchscreen (must support ABS_X and ABS_Y events)\n");
 		return -1;
 	}
