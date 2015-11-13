@@ -50,6 +50,10 @@
 #define GRAB_EVENTS_WANTED	1
 #define GRAB_EVENTS_ACTIVE	2
 
+#define USE_EV_SYN		1
+#define USE_SYN_FOR_UP		2
+#define SYN_TOUCH_DATA		4
+
 struct tslib_input {
 	struct tslib_module_info module;
 
@@ -104,6 +108,9 @@ static int check_fd(struct tslib_input *i)
 		return -1;
 	}
 
+	if (evbit[BIT_WORD(EV_SYN)] & BIT_MASK(EV_SYN))
+		i->using_syn = USE_EV_SYN;
+
 	/* Since some touchscreens (eg. infrared) physically can't measure pressure,
 	the input system doesn't report it on those. Tslib relies on pressure, thus
 	we set it to constant 255. It's still controlled by BTN_TOUCH/BTN_LEFT -
@@ -115,13 +122,13 @@ static int check_fd(struct tslib_input *i)
 		if ((ioctl(ts->fd, EVIOCGBIT(EV_KEY, sizeof(keybit)), keybit) < 0) ||
 			!(keybit[BIT_WORD(BTN_TOUCH)] & BIT_MASK(BTN_TOUCH) ||
 			  keybit[BIT_WORD(BTN_LEFT)] & BIT_MASK(BTN_LEFT))) {
-			fprintf(stderr, "tslib: Selected device is not a touchscreen (must support BTN_TOUCH or BTN_LEFT events)\n");
-			return -1;
+			if (!i->using_syn) {
+				fprintf(stderr, "tslib: Selected device is not a touchscreen (must support BTN_TOUCH or BTN_LEFT events)\n");
+				return -1;
+			}
+			i->using_syn = USE_SYN_FOR_UP;
 		}
 	}
-
-	if (evbit[BIT_WORD(EV_SYN)] & BIT_MASK(EV_SYN))
-		i->using_syn = 1;
 
 	if (i->grab_events == GRAB_EVENTS_WANTED) {
 		if (ioctl(ts->fd, EVIOCGRAB, (void *)1)) {
@@ -171,7 +178,8 @@ static int ts_input_read(struct tslib_module_info *inf,
 			case EV_SYN:
 				if (ev.code == SYN_REPORT) {
 					/* Fill out a new complete event */
-					if (pen_up) {
+					if (pen_up ||
+					    (i->using_syn & (USE_SYN_FOR_UP | SYN_TOUCH_DATA)) == USE_SYN_FOR_UP) { /* spoof up event on sync without data */
 						samp->x = 0;
 						samp->y = 0;
 						samp->pressure = 0;
@@ -180,6 +188,7 @@ static int ts_input_read(struct tslib_module_info *inf,
 						samp->x = i->current_x;
 						samp->y = i->current_y;
 						samp->pressure = i->current_p;
+						i->using_syn &= ~SYN_TOUCH_DATA;
 				}
 				samp->tv = ev.time;
 	#ifdef DEBUG
@@ -194,19 +203,21 @@ static int ts_input_read(struct tslib_module_info *inf,
 			case EV_ABS:
 				switch (ev.code) {
 				case ABS_X:
-					i->current_x = ev.value;
-					break;
-				case ABS_Y:
-					i->current_y = ev.value;
-					break;
 				case ABS_MT_POSITION_X:
 					i->current_x = ev.value;
+					if (i->using_syn & USE_SYN_FOR_UP)
+						i->using_syn|= SYN_TOUCH_DATA;
 					break;
+				case ABS_Y:
 				case ABS_MT_POSITION_Y:
 					i->current_y = ev.value;
+					if (i->using_syn & USE_SYN_FOR_UP)
+						i->using_syn|= SYN_TOUCH_DATA;
 					break;
 				case ABS_PRESSURE:
 					i->current_p = ev.value;
+					if (i->using_syn & USE_SYN_FOR_UP)
+						i->using_syn|= SYN_TOUCH_DATA;
 					break;
 				}
 				break;
